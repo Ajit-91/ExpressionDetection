@@ -37,7 +37,7 @@ const Camera = () => {
 
     useEffect(() => {
         const loadModels = async () => {
-            const MODEL_URL = "/models";
+            const MODEL_URL = "./models";
 
             await Promise.all([
                 faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
