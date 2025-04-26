@@ -56,8 +56,6 @@ const Camera = () => {
         }
     }, [settings.cameraEnabled, stopCamera]);
 
-  
-
     useEffect(() => {
         const detectFaces = async () => {
             if (
@@ -69,26 +67,33 @@ const Camera = () => {
                     videoRef.current,
                     new faceapi.TinyFaceDetectorOptions()
                 ).withFaceExpressions();
-
+        
                 const ctx = canvasRef.current.getContext("2d");
-                canvasRef.current.width = videoRef.current.videoWidth;
-                canvasRef.current.height = videoRef.current.videoHeight;
+                const displaySize = {
+                    width: videoRef.current.offsetWidth, 
+                    height: videoRef.current.offsetHeight, 
+                };
+        
+                canvasRef.current.width = displaySize.width;
+                canvasRef.current.height = displaySize.height;
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-                if (detections.length > 0) {
-                    detections.forEach((detection) => {
+        
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        
+                if (resizedDetections.length > 0) {
+                    resizedDetections.forEach((detection) => {
                         const box = detection.detection.box;
                         const expressions = detection.expressions;
-                        console.log({expressions})
+        
                         const maxExpression = Object.keys(expressions).reduce((a, b) =>
                             expressions[a] > expressions[b] ? a : b
                         );
-
+        
                         // Draw box
                         ctx.strokeStyle = "#0500ff";
                         ctx.lineWidth = 2;
                         ctx.strokeRect(box.x, box.y, box.width, box.height);
-
+        
                         // Draw label (only if expression detection is enabled)
                         if (settings.expressionDetectionEnabled) {
                             ctx.fillStyle = "#0500ff";
@@ -97,27 +102,27 @@ const Camera = () => {
                         }
                     });
                 }
-
+        
                 setFaceCount(detections.length); // Update face count
             } else {
                 setFaceCount(0); // No camera or detection off
             }
         };
-
+        
         let intervalId;
         if (settings.cameraEnabled) {
-            intervalId = setInterval(detectFaces, 500); 
+            intervalId = setInterval(detectFaces, 500);
         }
 
-        if(settings.faceDetectionEnabled === false){
+        if (settings.faceDetectionEnabled === false) {
             clearInterval(intervalId)
             clearCanvas()
         }
 
         return () => clearInterval(intervalId); // cleanup
-    }, [settings.cameraEnabled, 
-        settings.faceDetectionEnabled, 
-        settings.expressionDetectionEnabled,
+    }, [settings.cameraEnabled,
+    settings.faceDetectionEnabled,
+    settings.expressionDetectionEnabled,
         setFaceCount,
         clearCanvas
     ]);
