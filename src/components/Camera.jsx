@@ -103,9 +103,9 @@ const Camera = () => {
                     });
                 }
         
-                setFaceCount(detections.length); // Update face count
+                setFaceCount(detections.length);
             } else {
-                setFaceCount(0); // No camera or detection off
+                setFaceCount(0); 
             }
         };
         
