@@ -1,105 +1,148 @@
-// src/components/Camera.jsx
-import React, { useRef, useEffect, useContext } from "react";
+import React, { useEffect, useRef, useContext, useCallback } from "react";
+import AppContext from "../context/AppContext";
 import * as faceapi from "face-api.js";
-import  AppContext from "../context/AppContext";
+import { Box } from "@mui/material";
+import expressionEmojis from "../utils/expressions";
 
 const Camera = () => {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const { settings } = useContext(AppContext);
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const { settings, setFaceCount } = useContext(AppContext);
 
-  // Load face-api models
-  useEffect(() => {
-    const loadModels = async () => {
-      const MODEL_URL = '/models'; // make sure you have models in public/models
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-      ]);
-      startVideo();
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+        } catch (error) {
+            console.error("Error accessing camera", error);
+        }
     };
 
-    loadModels();
-  }, []);
+    const clearCanvas = useCallback(() => {
+        const ctx = canvasRef.current.getContext("2d");
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }, [canvasRef, videoRef])
 
-  // Start webcam
-  const startVideo = () => {
-    navigator.mediaDevices.getUserMedia({ video: {} })
-      .then(stream => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+    const stopCamera = useCallback(() => {
+        if (videoRef.current && videoRef.current.srcObject) {
+            videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+            videoRef.current.srcObject = null;
         }
-      })
-      .catch(err => console.error("Error accessing webcam: ", err));
-  };
+        clearCanvas();
+    }, [clearCanvas]);
 
-  // Detect faces and expressions
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (
-        videoRef.current &&
-        settings.faceDetectionEnabled
-      ) {
-        const detections = await faceapi.detectAllFaces(
-          videoRef.current,
-          new faceapi.TinyFaceDetectorOptions()
-        ).withFaceExpressions();
+    useEffect(() => {
+        const loadModels = async () => {
+            const MODEL_URL = "/models";
 
-        const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.innerHTML = faceapi.createCanvasFromMedia(videoRef.current);
-          const displaySize = {
-            width: videoRef.current.videoWidth,
-            height: videoRef.current.videoHeight,
-          };
-          faceapi.matchDimensions(canvas, displaySize);
-          const resizedDetections = faceapi.resizeResults(detections, displaySize);
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+            ]);
+        };
 
-          canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-          resizedDetections.forEach(detection => {
-            const { expressions, detection: box } = detection;
-            const { x, y, width, height } = box.box;
-            const ctx = canvas.getContext('2d');
+        loadModels();
+    }, []);
 
-            // Draw box
-            ctx.strokeStyle = "#0500ff";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, width, height);
+    useEffect(() => {
+        if (settings.cameraEnabled) {
+            startCamera();
+        } else {
+            stopCamera();
+        }
+    }, [settings.cameraEnabled, stopCamera]);
 
-            // Draw expression if enabled
-            if (settings.expressionDetectionEnabled) {
-              const sorted = Object.entries(expressions).sort((a, b) => b[1] - a[1]);
-              const topExpression = sorted[0];
-              ctx.font = "16px Arial";
-              ctx.fillStyle = "#0500ff";
-              ctx.fillText(`${topExpression[0]} (${(topExpression[1]*100).toFixed(1)}%)`, x, y - 10);
+  
+
+    useEffect(() => {
+        const detectFaces = async () => {
+            if (
+                videoRef.current &&
+                videoRef.current.readyState === 4 &&
+                settings.faceDetectionEnabled
+            ) {
+                const detections = await faceapi.detectAllFaces(
+                    videoRef.current,
+                    new faceapi.TinyFaceDetectorOptions()
+                ).withFaceExpressions();
+
+                const ctx = canvasRef.current.getContext("2d");
+                canvasRef.current.width = videoRef.current.videoWidth;
+                canvasRef.current.height = videoRef.current.videoHeight;
+                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+                if (detections.length > 0) {
+                    detections.forEach((detection) => {
+                        const box = detection.detection.box;
+                        const expressions = detection.expressions;
+                        console.log({expressions})
+                        const maxExpression = Object.keys(expressions).reduce((a, b) =>
+                            expressions[a] > expressions[b] ? a : b
+                        );
+
+                        // Draw box
+                        ctx.strokeStyle = "#0500ff";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+                        // Draw label (only if expression detection is enabled)
+                        if (settings.expressionDetectionEnabled) {
+                            ctx.fillStyle = "#0500ff";
+                            ctx.font = "16px Arial";
+                            ctx.fillText(expressionEmojis[maxExpression], box.x, box.y - 10);
+                        }
+                    });
+                }
+
+                setFaceCount(detections.length); // Update face count
+            } else {
+                setFaceCount(0); // No camera or detection off
             }
-          });
+        };
+
+        let intervalId;
+        if (settings.cameraEnabled) {
+            intervalId = setInterval(detectFaces, 500); 
         }
-      }
-    }, 100);
 
-    return () => clearInterval(interval);
-  }, [settings.faceDetectionEnabled, settings.expressionDetectionEnabled]);
+        if(settings.faceDetectionEnabled === false){
+            clearInterval(intervalId)
+            clearCanvas()
+        }
 
-  return (
-    <div style={{ position: "relative" }}>
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        width="720"
-        height="560"
-        style={{ position: "absolute" }}
-      />
-      <canvas
-        ref={canvasRef}
-        width="720"
-        height="560"
-        style={{ position: "absolute" }}
-      />
-    </div>
-  );
+        return () => clearInterval(intervalId); // cleanup
+    }, [settings.cameraEnabled, 
+        settings.faceDetectionEnabled, 
+        settings.expressionDetectionEnabled,
+        setFaceCount,
+        clearCanvas
+    ]);
+
+    return (
+        <div >
+            <Box position="relative">
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    style={{ width: "100%", objectFit: 'cover', position: 'relative' }}
+                />
+                <canvas
+                    ref={canvasRef}
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                    }}
+                />
+            </Box>
+        </div>
+    );
 };
 
 export default Camera;

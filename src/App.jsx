@@ -1,5 +1,4 @@
 import { Grid, Container, Typography } from "@mui/material";
-// import './App.css'
 import Camera from './components/Camera';
 import Settings from './components/Settings';
 
