@@ -9,7 +9,7 @@ const Camera = () => {
     const canvasRef = useRef(null);
     const { settings, setFaceCount } = useContext(AppContext);
 
-    const startCamera = async () => {
+    const startCamera = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             if (videoRef.current) {
@@ -17,8 +17,9 @@ const Camera = () => {
             }
         } catch (error) {
             console.error("Error accessing camera", error);
+            alert("Unable to access webcam")
         }
-    };
+    }, []);
 
     const clearCanvas = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
@@ -35,18 +36,6 @@ const Camera = () => {
         clearCanvas();
     }, [clearCanvas]);
 
-    useEffect(() => {
-        const loadModels = async () => {
-            const MODEL_URL = "./models";
-
-            await Promise.all([
-                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-            ]);
-        };
-
-        loadModels();
-    }, []);
 
     useEffect(() => {
         if (settings.cameraEnabled) {
@@ -54,7 +43,7 @@ const Camera = () => {
         } else {
             stopCamera();
         }
-    }, [settings.cameraEnabled, stopCamera]);
+    }, [settings.cameraEnabled, stopCamera, startCamera]);
 
     useEffect(() => {
         const detectFaces = async () => {
@@ -67,7 +56,9 @@ const Camera = () => {
                     videoRef.current,
                     new faceapi.TinyFaceDetectorOptions()
                 ).withFaceExpressions();
-        
+
+                console.log({detections})
+
                 const ctx = canvasRef.current.getContext("2d");
                 const displaySize = {
                     width: videoRef.current.offsetWidth, 
@@ -79,7 +70,7 @@ const Camera = () => {
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         
                 const resizedDetections = faceapi.resizeResults(detections, displaySize);
-        
+
                 if (resizedDetections.length > 0) {
                     resizedDetections.forEach((detection) => {
                         const box = detection.detection.box;
@@ -96,7 +87,7 @@ const Camera = () => {
         
                         // Draw label (only if expression detection is enabled)
                         if (settings.expressionDetectionEnabled) {
-                            ctx.fillStyle = "#0500ff";
+                            ctx.fillStyle = "#ffc83d";
                             ctx.font = "16px Arial";
                             ctx.fillText(expressionEmojis[maxExpression], box.x, box.y - 10);
                         }
@@ -114,15 +105,14 @@ const Camera = () => {
             intervalId = setInterval(detectFaces, 500);
         }
 
-        if (settings.faceDetectionEnabled === false) {
+        if (!settings.faceDetectionEnabled || !settings.cameraEnabled) {
             clearInterval(intervalId)
             clearCanvas()
         }
 
         return () => clearInterval(intervalId); // cleanup
-    }, [settings.cameraEnabled,
-    settings.faceDetectionEnabled,
-    settings.expressionDetectionEnabled,
+    }, [
+        settings,
         setFaceCount,
         clearCanvas
     ]);
